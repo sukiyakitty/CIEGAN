@@ -148,6 +148,52 @@ def save_blur(in_file, out_file):
     return True
 
 
+def image_resize(in_, out_, size=(256, 256)):
+    # resize all images in in_ and output in out_
+    # in_ or out_ can be a image file path or dir path
+
+    if not os.path.exists(in_):
+        print('!ERROR! The input path or image does not existed!')
+        return False
+
+    if os.path.isfile(in_):
+        name_img = os.path.split(in_)[-1]
+        o_img = any_to_image(in_)
+        d_img = cv2.resize(o_img, size, interpolation=cv2.INTER_NEAREST)
+        if os.path.isdir(out_):
+            cv2.imwrite(os.path.join(out_, name_img), d_img)
+        else:
+            cv2.imwrite(out_, d_img)
+    else:
+        path_list = os.listdir(in_)
+        for i in path_list:  # r'Label_1.png'
+            img_dirfile = os.path.join(in_, i)
+            image_resize(img_dirfile, out_, size=size)
+
+    return True
+
+
+def folder_image_resize(image_path, size=(256, 256)):
+    # resize all images in sub-folder and overwrite itself
+
+    if not os.path.exists(image_path):
+        print('!ERROR! The image_path does not existed!')
+        return False
+
+    path_list = os.listdir(image_path)
+
+    for i in path_list:  # r'Label_1.png'
+        img_dirfile = os.path.join(image_path, i)
+        if os.path.isfile(img_dirfile):
+            o_img = any_to_image(img_dirfile)
+            d_img = cv2.resize(o_img, size, interpolation=cv2.INTER_NEAREST)
+            cv2.imwrite(img_dirfile, d_img)
+        else:
+            folder_image_resize(img_dirfile, size=size)
+
+    return True
+
+
 def prepare_dirs_and_logger(config):
     formatter = logging.Formatter("%(asctime)s:%(levelname)s::%(message)s")
     logger = logging.getLogger()

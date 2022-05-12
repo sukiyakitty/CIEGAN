@@ -18,7 +18,7 @@ def parseArguments(argv):
     parser.add_argument('--output', default=r'C:\DATA\test\test_output_7.png', type=str, help='The output image file.')
     parser.add_argument('--checkpoint_dir', default=r'C:\DATA\PSL_CKP\CKP_20220303_0', type=str,
                         help='Checkpoint directory.')
-    parser.add_argument('--input_scale_size', type=int, default=128)
+    parser.add_argument('--input_scale_size', type=int, default=256)
     parser.add_argument('--conv_hidden_num', type=int, default=128, choices=[128], help='default 128')
     return parser.parse_args(argv)
 

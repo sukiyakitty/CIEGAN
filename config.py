@@ -22,10 +22,10 @@ net_arg.add_argument('--input_scale_size', type=int, default=256,
 net_arg.add_argument('--conv_hidden_num', type=int, default=128, choices=[128], help='default 128')
 # Data
 data_arg = add_argument_group('Data')
-data_arg.add_argument('--dataset', type=str, default='CD09_Bright_256', choices=['Bright', 'DAPI', 'cTnT', 'Living', 'others'])
-data_arg.add_argument('--train_path', type=str, default=r'E:\Data\CD09_Bright_256\AB\train')
+data_arg.add_argument('--dataset', type=str, default='cTnT_256_AB', choices=['Bright', 'DAPI', 'cTnT', 'Living', 'others'])
+data_arg.add_argument('--train_path', type=str, default=r'E:\Data\cTnT_256\AB\train')
 data_arg.add_argument('--split', type=str, default='train')
-data_arg.add_argument('--batch_size', type=int, default=8)
+data_arg.add_argument('--batch_size', type=int, default=20)
 data_arg.add_argument('--grayscale', type=str2bool, default=False)
 data_arg.add_argument('--num_worker', type=int, default=4)
 data_arg.add_argument('--gpu_number', type=str, default=0)

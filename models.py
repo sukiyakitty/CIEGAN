@@ -239,9 +239,9 @@ def total_variation_loss(layer):
     shape = tf.shape(layer)
     height = shape[1]
     width = shape[2]
-    y = tf.slice(layer, [0, 0, 0, 0], tf.stack([-1, height - 1, -1, -1])) - tf.slice(layer, [0, 1, 0, 0],
-                                                                                     [-1, -1, -1, -1])
-    x = tf.slice(layer, [0, 0, 0, 0], tf.stack([-1, -1, width - 1, -1])) - tf.slice(layer, [0, 0, 1, 0],
-                                                                                    [-1, -1, -1, -1])
+    y = tf.slice(layer, [0, 0, 0, 0], tf.stack([-1, height - 1, -1, -1])) \
+        - tf.slice(layer, [0, 1, 0, 0], [-1, -1, -1, -1])
+    x = tf.slice(layer, [0, 0, 0, 0], tf.stack([-1, -1, width - 1, -1])) \
+        - tf.slice(layer, [0, 0, 1, 0], [-1, -1, -1, -1])
     loss = tf.nn.l2_loss(x) / tf.to_float(tf.size(x)) + tf.nn.l2_loss(y) / tf.to_float(tf.size(y))
     return loss

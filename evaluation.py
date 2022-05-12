@@ -10,19 +10,23 @@ from sklearn import metrics
 import cv2
 import matplotlib.pyplot as plt
 import torch
-import pyiqa
-import lpips
+# import pyiqa
+# import lpips
 from torch_fidelity import calculate_metrics
 from niqe import getNIQE
-from utils import any_to_image, image_to_gray, save_traditional_enhancement, save_blur
+from utils import any_to_image, image_to_gray, save_traditional_enhancement, save_blur, image_resize
 
 # import matlab.engine
 try:
     import matlab.engine
 
-    print('matlab.engine')
 except:
     print('Importing matlab.engine fails. Please install Matlab.')
+try:
+    import pyiqa
+
+except:
+    print('Importing pyiqa fails. Please install pyiqa.')
 
 
 def call_test(in_file, out_file, ckp_dir):
@@ -33,7 +37,7 @@ def call_test_folder(in_dir, out_dir, ckp_dir):
     os.system(r'python test_folder.py --input {} --output {} --checkpoint_dir {}'.format(in_dir, out_dir, ckp_dir))
 
 
-def test_folder(input_dir, output_dir, checkpoint_dir):
+def test_folder(input_dir, output_dir, checkpoint_dir, img_size=256, batch_size=128):
     # run CIEGAN, if big image then cut; if folder, image must be 128*128
     if not os.path.exists(input_dir):
         print('!ERROR! The input_dir path does not existed!')
@@ -46,7 +50,7 @@ def test_folder(input_dir, output_dir, checkpoint_dir):
         in_img_path = os.path.join(input_dir, i)
         # print(in_img_path)
         first_img = any_to_image(in_img_path)
-        if first_img.shape[0] > 128 or first_img.shape[1] > 128:
+        if first_img.shape[0] > img_size or first_img.shape[1] > img_size:
             big_img = True
         else:
             big_img = False
@@ -59,15 +63,15 @@ def test_folder(input_dir, output_dir, checkpoint_dir):
             call_test(in_img_path, out_img_path, checkpoint_dir)
     else:
         # if len(img_list) > 512:
-        if len(img_list) > 512:
-            img_list_split = [img_list[i:i + 512] for i in range(0, len(img_list), 512)]
+        if len(img_list) > batch_size:
+            img_list_split = [img_list[i:i + batch_size] for i in range(0, len(img_list), batch_size)]
         else:
             img_list_split = [img_list]
 
-        for k, img_list_512 in enumerate(img_list_split):
+        for k, img_list_batch_size in enumerate(img_list_split):
             k_folder = os.path.join(input_dir, str(k))
             os.makedirs(k_folder)
-            for img in img_list_512:
+            for img in img_list_batch_size:
                 from_file = os.path.join(input_dir, img)
                 to_file = os.path.join(k_folder, img)
                 shutil.copy(from_file, to_file)
@@ -335,6 +339,10 @@ def evaluateFR_add_folder(main_path, gt_dir, eval_dir, add_name, add_funtion):
 
     img_list = os.listdir(GT_dir)
     for i in img_list:
+        if (i in Eval_df.index) and (col in Eval_df.columns) and pd.notnull(Eval_df.loc[i, col]) and (
+                Eval_df.loc[i, col] != 0):
+            continue
+
         GT_img_path = os.path.join(GT_dir, i)
         CIEGAN_img_path = os.path.join(EVAL_dir, i)
 
@@ -345,7 +353,7 @@ def evaluateFR_add_folder(main_path, gt_dir, eval_dir, add_name, add_funtion):
         Eval_df.loc[i, col] = add_funtion(GT_img_path, CIEGAN_img_path)
         t1 = time.time()
         time_cost = t1 - t0
-        print("Image %s takes: %f sec" % (i, time_cost))
+        print("%s %s takes: %f sec" % (add_funtion.__name__, i, time_cost))
         if time_cost >= 3:
             Eval_df.to_csv(path_or_buf=Eval_file_path)
 
@@ -354,24 +362,24 @@ def evaluateFR_add_folder(main_path, gt_dir, eval_dir, add_name, add_funtion):
     return True
 
 
-def evaluateNR_add_folder(main_path, gt_dir, add_name, add_funtion):
+def evaluateNR_add_folder(main_path, img_dir, add_name, add_funtion):
     # once add all add_funtion to Evaluation.csv
     if not os.path.exists(main_path):
         print('!ERROR! The main_path path does not existed!')
         return False
 
     if add_funtion.__name__.find('folder') >= 0:
-        add_funtion(main_path, gt_dir)
+        add_funtion(main_path, img_dir)
         return True
     elif add_funtion.__name__.find('get') >= 0:
         pass
     else:
         return False
 
-    col = add_name + '_' + gt_dir
+    col = add_name + '_' + img_dir
 
-    GT_dir = os.path.join(main_path, gt_dir)
-    if not os.path.exists(GT_dir):
+    IMG_dir = os.path.join(main_path, img_dir)
+    if not os.path.exists(IMG_dir):
         print('!ERROR! The Ground_Truth_dir path does not existed!')
         return False
 
@@ -384,18 +392,20 @@ def evaluateNR_add_folder(main_path, gt_dir, add_name, add_funtion):
         Eval_df = pd.DataFrame()
         # Eval_df.to_csv(path_or_buf=Eval_file_path)  # save
 
-    img_list = os.listdir(GT_dir)
+    img_list = os.listdir(IMG_dir)
     for i in img_list:
-        GT_img_path = os.path.join(GT_dir, i)
+        if (i in Eval_df.index) and (col in Eval_df.columns) and pd.notnull(Eval_df.loc[i, col]) and (
+                Eval_df.loc[i, col] != 0):
+            continue
 
+        img_path = os.path.join(IMG_dir, i)
         # img_1 = image_to_gray(GT_img_path)
-
         t0 = time.time()
-        Eval_df.loc[i, col] = add_funtion(GT_img_path)
+        Eval_df.loc[i, col] = add_funtion(img_path)
         t1 = time.time()
-        time_cost=t1 - t0
-        print("Image %s takes: %f sec" % (i,time_cost))
-        if time_cost>=3:
+        time_cost = t1 - t0
+        print("%s %s takes: %f sec" % (add_funtion.__name__, i, time_cost))
+        if time_cost >= 1.5:
             Eval_df.to_csv(path_or_buf=Eval_file_path)
 
     Eval_df.to_csv(path_or_buf=Eval_file_path)  # save
@@ -444,7 +454,7 @@ def evaluate_folder(main_path, gt_dir, eval_dir):
         t1 = time.time()
         time_cost = t1 - t0
         print("Image %s takes: %f sec" % (i, time_cost))
-        if time_cost >= 3:
+        if time_cost >= 1.5:
             Eval_df.to_csv(path_or_buf=Eval_file_path)
 
     Eval_df.to_csv(path_or_buf=Eval_file_path)  # save
@@ -988,41 +998,199 @@ def make_box_plot(main_path):
     else:
         return False
     figsize = (12.80, 10.24)
-    fontsize = 12
-    linewidth = 3
+    fontsize = 24
+    linewidth = 4
     folder = 2
     fontsize = fontsize * folder
     linewidth = linewidth * folder
 
     # NF_methods = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Fractal']
     NF_methods = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution']
-    cols = ['Input', 'GT', 'EGT', 'TE', 'CIEGAN', 'CIEGANP']
+    cols = ['Input', 'TE', 'CIEGAN', 'CIEGANP', 'GT', 'EGT']
     for nf in NF_methods:
-        this_box = Eval_df.boxplot(
-            column=[nf + '_' + i for i in cols],
-            figsize=(figsize[0] * folder, figsize[1] * folder), grid=True, fontsize=fontsize)
-        plt.title(nf, fontsize=fontsize)
+        myfig = plt.figure(figsize=(figsize[0] * folder, figsize[1] * folder))
+        this_box = Eval_df.boxplot(column=[nf + '_' + i for i in cols], grid=True, fontsize=fontsize)
+        # plt.title(nf, fontsize=fontsize)
         plt.ylabel(nf, fontsize=fontsize)
-        plt.xlabel(r'Conditions', fontsize=fontsize)
+        # plt.xlabel(r'Conditions', fontsize=fontsize)
+        xticks_tuple = plt.xticks()
+        new_label = []
+        for i_t in xticks_tuple[1]:
+            new_label.append(i_t._text.split('_')[-1])
+        plt.xticks(xticks_tuple[0], new_label)
+        myfig.get_axes()[0].spines['bottom'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['left'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['right'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['top'].set_linewidth(linewidth)
+        # myfig.get_axes()[0].grid(b=True, linewidth=linewidth/2)
+        for line in myfig.get_axes()[0].get_lines():
+            line.set_linewidth(linewidth)
         plt.savefig(os.path.join(main_path, nf + r'.png'))
         plt.close()
 
-    FR_methods = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'LPIPS', 'MI', 'NMI', 'AMI']
-    cols = ['TE~GT', 'CIEGAN~GT', 'EGT~GT', 'CIEGANP~GT', 'TE~EGT', 'CIEGAN~EGT']
+    FR_methods = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI']
+    cols = ['TE~GT', 'CIEGAN~GT', 'CIEGANP~GT', 'EGT~GT', 'TE~EGT', 'CIEGAN~EGT', 'CIEGANP~EGT']
     for fr in FR_methods:
-        this_box = Eval_df.boxplot(
-            column=[fr + '_' + i for i in cols],
-            figsize=(figsize[0] * folder, figsize[1] * folder), grid=True, fontsize=fontsize)
-        plt.title(fr, fontsize=fontsize)
+        myfig = plt.figure(figsize=(figsize[0] * folder, figsize[1] * folder))
+        this_box = Eval_df.boxplot(column=[fr + '_' + i for i in cols], grid=True, fontsize=fontsize)
+        # plt.title(fr, fontsize=fontsize)
         plt.ylabel(fr, fontsize=fontsize)
-        plt.xlabel(r'Conditions', fontsize=fontsize)
+        # plt.xlabel(r'Conditions', fontsize=fontsize)
+        xticks_tuple = plt.xticks()
+        new_label = []
+        for i_t in xticks_tuple[1]:
+            new_label.append(i_t._text.split('_')[-1])
+        plt.xticks(xticks_tuple[0], new_label, rotation=15)
+        myfig.get_axes()[0].spines['bottom'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['left'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['right'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['top'].set_linewidth(linewidth)
+        # myfig.get_axes()[0].grid(b=True, linewidth=linewidth/2)
+        for line in myfig.get_axes()[0].get_lines():
+            line.set_linewidth(linewidth)
         plt.savefig(os.path.join(main_path, fr + r'.png'))
         plt.close()
 
     return True
 
 
-def test_bat(main_path, checkpoint_dir, gt_dir=r'GT'):
+def make_box_plot_1(main_path):
+    if not os.path.exists(main_path):
+        print('!ERROR! The main_path path does not existed!')
+        return False
+    Eval_file_path = os.path.join(main_path, 'Evaluation.csv')
+    if os.path.exists(Eval_file_path):
+        Eval_df = pd.read_csv(Eval_file_path, header=0, index_col=0)
+        Eval_df = Eval_df.fillna(0)
+        Eval_df = Eval_df.applymap(lambda x: float(x))
+    else:
+        return False
+    figsize = (12.80, 10.24)
+    fontsize = 24
+    linewidth = 4
+    folder = 2
+    fontsize = fontsize * folder
+    linewidth = linewidth * folder
+
+    # NF_methods = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Fractal']
+    NF_methods = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution']
+    cols = ['Input', 'TE', 'CIEGAN', 'CIEGANP', 'GT', 'EGT']
+    for nf in NF_methods:
+        myfig = plt.figure(figsize=(figsize[0] * folder, figsize[1] * folder))
+        this_box = Eval_df.boxplot(column=[nf + '_' + i for i in cols], grid=True, fontsize=fontsize)
+        # plt.title(nf, fontsize=fontsize)
+        plt.ylabel(nf, fontsize=fontsize)
+        # plt.xlabel(r'Conditions', fontsize=fontsize)
+        xticks_tuple = plt.xticks()
+        new_label = []
+        for i_t in xticks_tuple[1]:
+            new_label.append(i_t._text.split('_')[-1])
+        plt.xticks(xticks_tuple[0], new_label)
+        myfig.get_axes()[0].spines['bottom'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['left'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['right'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['top'].set_linewidth(linewidth)
+        # myfig.get_axes()[0].grid(b=True, linewidth=linewidth/2)
+        for line in myfig.get_axes()[0].get_lines():
+            line.set_linewidth(linewidth)
+        plt.savefig(os.path.join(main_path, nf + r'.png'))
+        plt.close()
+
+    FR_methods = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI']
+    cols = ['TE~GT', 'CIEGAN~GT', 'TE~EGT', 'CIEGANP~EGT']
+    for fr in FR_methods:
+        myfig = plt.figure(figsize=(figsize[0] * folder, figsize[1] * folder))
+        this_box = Eval_df.boxplot(column=[fr + '_' + i for i in cols], grid=True, fontsize=fontsize)
+        # plt.title(fr, fontsize=fontsize)
+        plt.ylabel(fr, fontsize=fontsize)
+        # plt.xlabel(r'Conditions', fontsize=fontsize)
+        xticks_tuple = plt.xticks()
+        new_label = []
+        for i_t in xticks_tuple[1]:
+            new_label.append(i_t._text.split('_')[-1])
+        plt.xticks(xticks_tuple[0], new_label, rotation=0)
+        myfig.get_axes()[0].spines['bottom'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['left'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['right'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['top'].set_linewidth(linewidth)
+        # myfig.get_axes()[0].grid(b=True, linewidth=linewidth/2)
+        for line in myfig.get_axes()[0].get_lines():
+            line.set_linewidth(linewidth)
+        plt.savefig(os.path.join(main_path, fr + r'.png'))
+        plt.close()
+
+    return True
+
+
+def make_box_plot_2(main_path):
+    if not os.path.exists(main_path):
+        print('!ERROR! The main_path path does not existed!')
+        return False
+    Eval_file_path = os.path.join(main_path, 'Evaluation.csv')
+    if os.path.exists(Eval_file_path):
+        Eval_df = pd.read_csv(Eval_file_path, header=0, index_col=0)
+        Eval_df = Eval_df.fillna(0)
+        Eval_df = Eval_df.applymap(lambda x: float(x))
+    else:
+        return False
+    figsize = (12.80, 10.24)
+    fontsize = 24
+    linewidth = 4
+    folder = 2
+    fontsize = fontsize * folder
+    linewidth = linewidth * folder
+
+    # NF_methods = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Fractal']
+    NF_methods = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution']
+    cols = ['Input', 'TE', 'CIEGANP', 'GT', 'EGT']
+    for nf in NF_methods:
+        myfig = plt.figure(figsize=(figsize[0] * folder, figsize[1] * folder))
+        this_box = Eval_df.boxplot(column=[nf + '_' + i for i in cols], grid=True, fontsize=fontsize)
+        # plt.title(nf, fontsize=fontsize)
+        plt.ylabel(nf, fontsize=fontsize)
+        # plt.xlabel(r'Conditions', fontsize=fontsize)
+        xticks_tuple = plt.xticks()
+        new_label = []
+        for i_t in xticks_tuple[1]:
+            new_label.append(i_t._text.split('_')[-1])
+        plt.xticks(xticks_tuple[0], new_label)
+        myfig.get_axes()[0].spines['bottom'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['left'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['right'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['top'].set_linewidth(linewidth)
+        # myfig.get_axes()[0].grid(b=True, linewidth=linewidth/2)
+        for line in myfig.get_axes()[0].get_lines():
+            line.set_linewidth(linewidth)
+        plt.savefig(os.path.join(main_path, nf + r'.png'))
+        plt.close()
+
+    FR_methods = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI']
+    cols = ['TE~EGT', 'CIEGANP~EGT']
+    for fr in FR_methods:
+        myfig = plt.figure(figsize=(figsize[0] * folder, figsize[1] * folder))
+        this_box = Eval_df.boxplot(column=[fr + '_' + i for i in cols], grid=True, fontsize=fontsize)
+        # plt.title(fr, fontsize=fontsize)
+        plt.ylabel(fr, fontsize=fontsize)
+        # plt.xlabel(r'Conditions', fontsize=fontsize)
+        xticks_tuple = plt.xticks()
+        new_label = []
+        for i_t in xticks_tuple[1]:
+            new_label.append(i_t._text.split('_')[-1])
+        plt.xticks(xticks_tuple[0], new_label, rotation=0)
+        myfig.get_axes()[0].spines['bottom'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['left'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['right'].set_linewidth(linewidth)
+        myfig.get_axes()[0].spines['top'].set_linewidth(linewidth)
+        # myfig.get_axes()[0].grid(b=True, linewidth=linewidth/2)
+        for line in myfig.get_axes()[0].get_lines():
+            line.set_linewidth(linewidth)
+        plt.savefig(os.path.join(main_path, fr + r'.png'))
+        plt.close()
+
+    return True
+
+
+def test_bat_0(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT'):
     if not os.path.exists(main_path):
         print('!ERROR! The main_path path does not existed!')
         return False
@@ -1045,14 +1213,97 @@ def test_bat(main_path, checkpoint_dir, gt_dir=r'GT'):
     traditional_blur_folder(GT_dir, BLUR_dir)
     traditional_enhancement_method_folder(GT_dir, GT_enhance_dir)
     traditional_enhancement_method_folder(BLUR_dir, BLUR_enhance_dir)
-    test_folder(BLUR_dir, CIEGAN_dir, checkpoint_dir)
-    test_folder(GT_dir, CIEGANP_dir, checkpoint_dir)
+    test_folder(BLUR_dir, CIEGAN_dir, ckp_dir)
+    test_folder(BLUR_dir, CIEGANP_dir, ckp_plus_dir)
 
+    NR_name = ['STD', 'SF', 'Entropy', 'Resolution']
+    NR_funtion = [getSTD, getSpatialFrequency, getEntropy, getResolution]
+    cols = [blur_dir, blur_enhance_dir, ciegan_dir, cieganp_dir, gt_dir, gt_enhance_dir]
+    for i in range(len(NR_name)):
+        for dir in cols:
+            evaluateNR_add_folder(main_path, dir, NR_name[i], NR_funtion[i])
+
+    FR_name = ['MI']
+    FR_funtion = [getMI]
+    cols = [gt_dir, gt_dir, gt_dir, gt_dir, gt_enhance_dir, gt_enhance_dir, gt_enhance_dir]
+    cols_ref = [blur_enhance_dir, ciegan_dir, cieganp_dir, gt_enhance_dir, blur_enhance_dir, ciegan_dir, cieganp_dir]
+    for i in range(len(FR_name)):
+        for j in range(len(cols)):
+            evaluateFR_add_folder(main_path, cols[j], cols_ref[j], FR_name[i], FR_funtion[i])
+
+    Eval_file_path = os.path.join(main_path, 'Evaluation.csv')
+    if os.path.exists(Eval_file_path):
+        Eval_df = pd.read_csv(Eval_file_path, header=0, index_col=0)
+        Eval_df = Eval_df.fillna(0)
+        Eval_df = Eval_df.applymap(lambda x: float(x))
+    else:
+        return False
+    figsize = (12.80, 10.24)
+    fontsize = 12
+    linewidth = 3
+    folder = 2
+    fontsize = fontsize * folder
+    linewidth = linewidth * folder
+
+    NF_methods = ['STD', 'SF', 'Entropy', 'Resolution']
+    cols = ['Input', 'TE', 'CIEGAN', 'CIEGANP', 'GT', 'EGT']
+    for nf in NF_methods:
+        this_box = Eval_df.boxplot(
+            column=[nf + '_' + i for i in cols],
+            figsize=(figsize[0] * folder, figsize[1] * folder), grid=True, fontsize=fontsize)
+        plt.title(nf, fontsize=fontsize)
+        plt.ylabel(nf, fontsize=fontsize)
+        plt.xlabel(r'Conditions', fontsize=fontsize)
+        plt.savefig(os.path.join(main_path, nf + r'.png'))
+        plt.close()
+
+    FR_methods = ['MI']
+    cols = ['TE~GT', 'CIEGAN~GT', 'CIEGANP~GT', 'EGT~GT', 'TE~EGT', 'CIEGAN~EGT', 'CIEGANP~EGT']
+    for fr in FR_methods:
+        this_box = Eval_df.boxplot(
+            column=[fr + '_' + i for i in cols],
+            figsize=(figsize[0] * folder, figsize[1] * folder), grid=True, fontsize=fontsize)
+        plt.title(fr, fontsize=fontsize)
+        plt.ylabel(fr, fontsize=fontsize)
+        plt.xlabel(r'Conditions', fontsize=fontsize)
+        plt.savefig(os.path.join(main_path, fr + r'.png'))
+        plt.close()
+
+    return True
+
+
+def test_bat(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT'):
+    if not os.path.exists(main_path):
+        print('!ERROR! The main_path path does not existed!')
+        return False
+    GT_dir = os.path.join(main_path, gt_dir)
+    if not os.path.exists(GT_dir):
+        print('!ERROR! The Ground_Truth_dir path does not existed!')
+        return False
+
+    blur_dir = r'Input'
+    BLUR_dir = os.path.join(main_path, blur_dir)
+    blur_enhance_dir = r'TE'
+    BLUR_enhance_dir = os.path.join(main_path, blur_enhance_dir)
+    gt_enhance_dir = r'EGT'
+    GT_enhance_dir = os.path.join(main_path, gt_enhance_dir)
+    ciegan_dir = r'CIEGAN'
+    CIEGAN_dir = os.path.join(main_path, ciegan_dir)
+    cieganp_dir = r'CIEGANP'
+    CIEGANP_dir = os.path.join(main_path, cieganp_dir)
+
+    traditional_blur_folder(GT_dir, BLUR_dir)
+    traditional_enhancement_method_folder(GT_dir, GT_enhance_dir)
+    traditional_enhancement_method_folder(BLUR_dir, BLUR_enhance_dir)
+    test_folder(BLUR_dir, CIEGAN_dir, ckp_dir)
+    test_folder(BLUR_dir, CIEGANP_dir, ckp_plus_dir)
+
+    # Fractal and Resolution need matlab code
     # NR_name = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Fractal']
     NR_name = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution']
     # NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, niqe, getFractal]
     NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, getNIQE, getResolution]
-    cols = [blur_dir, gt_dir, gt_enhance_dir, ciegan_dir, blur_enhance_dir, cieganp_dir]
+    cols = [blur_dir, blur_enhance_dir, ciegan_dir, cieganp_dir, gt_dir, gt_enhance_dir]
     for i in range(len(NR_name)):
         for dir in cols:
             evaluateNR_add_folder(main_path, dir, NR_name[i], NR_funtion[i])
@@ -1060,8 +1311,8 @@ def test_bat(main_path, checkpoint_dir, gt_dir=r'GT'):
     FR_name = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI', 'LPIPS', 'ISFIDKID']
     FR_funtion = [getMSE, getRMSE, getNRMSE, getSSIM, getMSSSIM, getPSNR, getUQI, getMI, getNMI, getAMI,
                   evaluateLPIPSfolder, evaluateISFIDKIDfolder]
-    cols = [gt_dir, gt_dir, gt_dir, gt_dir, gt_enhance_dir, gt_enhance_dir]
-    cols_ref = [ciegan_dir, blur_enhance_dir, gt_enhance_dir, cieganp_dir, ciegan_dir, blur_enhance_dir]
+    cols = [gt_dir, gt_dir, gt_dir, gt_dir, gt_enhance_dir, gt_enhance_dir, gt_enhance_dir]
+    cols_ref = [blur_enhance_dir, ciegan_dir, cieganp_dir, gt_enhance_dir, blur_enhance_dir, ciegan_dir, cieganp_dir]
     for i in range(len(FR_name)):
         for j in range(len(cols)):
             evaluateFR_add_folder(main_path, cols[j], cols_ref[j], FR_name[i], FR_funtion[i])
@@ -1263,14 +1514,168 @@ def test_bat_3(main_path, checkpoint_dir, gt_dir=r'GT'):
     make_box_plot(main_path)
 
 
+def test_bat_4(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT'):
+    if not os.path.exists(main_path):
+        print('!ERROR! The main_path path does not existed!')
+        return False
+    GT_dir = os.path.join(main_path, gt_dir)
+    if not os.path.exists(GT_dir):
+        print('!ERROR! The Ground_Truth_dir path does not existed!')
+        return False
+
+    blur_dir = r'Input'
+    BLUR_dir = os.path.join(main_path, blur_dir)
+    blur_enhance_dir = r'TE'
+    BLUR_enhance_dir = os.path.join(main_path, blur_enhance_dir)
+    gt_enhance_dir = r'EGT'
+    GT_enhance_dir = os.path.join(main_path, gt_enhance_dir)
+    ciegan_dir = r'CIEGAN'
+    CIEGAN_dir = os.path.join(main_path, ciegan_dir)
+    cieganp_dir = r'CIEGANP'
+    CIEGANP_dir = os.path.join(main_path, cieganp_dir)
+
+    traditional_blur_folder(GT_dir, BLUR_dir)
+    traditional_enhancement_method_folder(GT_dir, GT_enhance_dir)
+    traditional_enhancement_method_folder(BLUR_dir, BLUR_enhance_dir)
+    # test_folder(BLUR_dir, CIEGAN_dir, ckp_dir)
+    test_folder(BLUR_dir, CIEGANP_dir, ckp_plus_dir)
+
+
+def test_bat_5(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT'):
+    if not os.path.exists(main_path):
+        print('!ERROR! The main_path path does not existed!')
+        return False
+    GT_dir = os.path.join(main_path, gt_dir)
+    if not os.path.exists(GT_dir):
+        print('!ERROR! The Ground_Truth_dir path does not existed!')
+        return False
+
+    blur_dir = r'Input'
+    BLUR_dir = os.path.join(main_path, blur_dir)
+    blur_enhance_dir = r'TE'
+    BLUR_enhance_dir = os.path.join(main_path, blur_enhance_dir)
+    gt_enhance_dir = r'EGT'
+    GT_enhance_dir = os.path.join(main_path, gt_enhance_dir)
+    ciegan_dir = r'CIEGAN'
+    CIEGAN_dir = os.path.join(main_path, ciegan_dir)
+    cieganp_dir = r'CIEGANP'
+    CIEGANP_dir = os.path.join(main_path, cieganp_dir)
+
+    # traditional_blur_folder(GT_dir, BLUR_dir)
+    # traditional_enhancement_method_folder(GT_dir, GT_enhance_dir)
+    # traditional_enhancement_method_folder(BLUR_dir, BLUR_enhance_dir)
+    # test_folder(BLUR_dir, CIEGAN_dir, ckp_dir)
+    # test_folder(BLUR_dir, CIEGANP_dir, ckp_plus_dir)
+
+    # Fractal and Resolution need matlab code
+    # NR_name = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Fractal']
+    NR_name = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution']
+    # NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, niqe, getFractal]
+    NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, getNIQE, getResolution]
+    cols = [blur_dir, blur_enhance_dir, cieganp_dir, gt_dir, gt_enhance_dir]
+    for i in range(len(NR_name)):
+        for dir in cols:
+            evaluateNR_add_folder(main_path, dir, NR_name[i], NR_funtion[i])
+
+    FR_name = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI']
+    FR_funtion = [getMSE, getRMSE, getNRMSE, getSSIM, getMSSSIM, getPSNR, getUQI, getMI, getNMI, getAMI]
+    cols = [gt_dir, gt_dir, gt_dir, gt_enhance_dir, gt_enhance_dir]
+    cols_ref = [blur_enhance_dir, cieganp_dir, gt_enhance_dir, blur_enhance_dir, cieganp_dir]
+    for i in range(len(FR_name)):
+        for j in range(len(cols)):
+            evaluateFR_add_folder(main_path, cols[j], cols_ref[j], FR_name[i], FR_funtion[i])
+
+    # make_box_plot_1(main_path)
+    make_box_plot_2(main_path)
+
+    return True
+
+
+def test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O'):
+    if not os.path.exists(main_path):
+        print('!ERROR! The main_path path does not existed!')
+        return False
+    O_dir = os.path.join(main_path, o_dir)
+    if not os.path.exists(O_dir):
+        print('!ERROR! The Oiginal_dir path does not existed!')
+        return False
+
+    gt_dir = r'GT'
+    GT_dir = os.path.join(main_path, gt_dir)
+    blur_dir = r'Input'
+    BLUR_dir = os.path.join(main_path, blur_dir)
+    blur_enhance_dir = r'TE'
+    BLUR_enhance_dir = os.path.join(main_path, blur_enhance_dir)
+    gt_enhance_dir = r'EGT'
+    GT_enhance_dir = os.path.join(main_path, gt_enhance_dir)
+    ciegan_dir = r'CIEGAN_1'
+    CIEGAN_dir = os.path.join(main_path, ciegan_dir)
+    cieganp_dir = r'CIEGAN_2'
+    CIEGANP_dir = os.path.join(main_path, cieganp_dir)
+
+    image_resize(O_dir, GT_dir, size=(256, 256))
+    traditional_blur_folder(GT_dir, BLUR_dir)
+    traditional_enhancement_method_folder(GT_dir, GT_enhance_dir)
+    traditional_enhancement_method_folder(BLUR_dir, BLUR_enhance_dir)
+    test_folder(BLUR_dir, CIEGAN_dir, ckp_1_dir)
+    test_folder(BLUR_dir, CIEGANP_dir, ckp_2_dir)
+
+    # Fractal and Resolution need matlab code
+    # NR_name = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution', 'Fractal']
+    NR_name = ['STD', 'AG', 'SF', 'Entropy', 'Resolution']
+    # NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, niqe, getFractal]
+    NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, getNIQE, getResolution]
+    cols = [blur_dir, blur_enhance_dir, cieganp_dir, gt_dir, gt_enhance_dir]
+    for i in range(len(NR_name)):
+        for dir in cols:
+            evaluateNR_add_folder(main_path, dir, NR_name[i], NR_funtion[i])
+
+    FR_name = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI']
+    FR_funtion = [getMSE, getRMSE, getNRMSE, getSSIM, getMSSSIM, getPSNR, getUQI, getMI, getNMI, getAMI]
+    cols = [gt_dir, gt_dir, gt_dir, gt_enhance_dir, gt_enhance_dir]
+    cols_ref = [blur_enhance_dir, cieganp_dir, gt_enhance_dir, blur_enhance_dir, cieganp_dir]
+    for i in range(len(FR_name)):
+        for j in range(len(cols)):
+            evaluateFR_add_folder(main_path, cols[j], cols_ref[j], FR_name[i], FR_funtion[i])
+
+    # make_box_plot_1(main_path)
+    make_box_plot_2(main_path)
+
+    return True
+
+
 if __name__ == "__main__":
     # img = r'C:\DATA\CIEGAN_eval_5\GT\2018-09-13~F_CD09~T1_47.png'
     # resolution = getResolution(img, pps=0.65)
     # print(resolution)
 
-    main_path = r'C:\DATA\CIEGAN_eval_4'
-    checkpoint_dir = r'C:\DATA\PSL_CKP\checkpoint_20220304_235728'
-    test_bat_3(main_path, checkpoint_dir, gt_dir=r'GT')
+    # make_box_plot_2(r'C:\DATA\CIEGAN_eval_13')
+
+    ckp_dir = r'C:\DATA\PSL_CKP\checkpoint_20220327_155150'  # CD09 Bright CB
+    # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220329_094129' # CD09 Bright AB
+    # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220330_233448' # CD09 CTNT AB
+    # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220401_181520' # CD11 CD13 DAPI AB
+    # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220403_141422' # CD11 CD13 CTNT AB
+
+    # main_path = r'C:\DATA\CIEGAN_eval_f_11_2'
+    # ckp_dir = r'E:\Data\PSL_CKP\checkpoint_20220327_155150'
+    # ckp_plus_dir = r'E:\Data\PSL_CKP\checkpoint_20220329_094129'
+    # test_bat_4(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
+
+    # main_path = r'C:\DATA\CIEGAN_eval_13'
+    # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220330_233448'
+    # test_bat_5(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
+
+    main_path = r'C:\DATA\CIEGAN_eval_12'
+    ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220401_181520'
+    test_bat_5(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
+
+    # main_path = r'C:\DATA\CIEGAN_eval_14'
+    # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220403_141422'
+    # test_bat_4(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
+
+    # test_bat(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
+    # make_box_plot(main_path)
 
     # evaluate_niqe_folder(main_path, r'Input')
     # evaluate_niqe_folder(main_path, r'TE')

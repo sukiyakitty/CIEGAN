@@ -18,7 +18,7 @@ def parseArguments(argv):
     parser.add_argument('--output', default=r'', type=str, help='Where to write output.')
     parser.add_argument('--checkpoint_dir', default=r'', type=str,
                         help='The directory of tensorflow checkpoint.')
-    parser.add_argument('--input_scale_size', type=int, default=128)
+    parser.add_argument('--input_scale_size', type=int, default=256)
     parser.add_argument('--conv_hidden_num', type=int, default=128, choices=[128], help='default 128')
     return parser.parse_args(argv)
 
