@@ -7,6 +7,8 @@ import cv2
 import datetime
 from PIL import Image
 
+_ = (256, 256)
+
 
 def any_to_image(img):
     if type(img) is str:
@@ -148,27 +150,28 @@ def save_blur(in_file, out_file):
     return True
 
 
-def image_resize(in_, out_, size=(256, 256)):
+def image_resize(in_, out_, size=_):
     # resize all images in in_ and output in out_
     # in_ or out_ can be a image file path or dir path
-
-    if not os.path.exists(in_):
-        print('!ERROR! The input path or image does not existed!')
-        return False
+    # if out_ is a dir, it must existed
 
     if os.path.isfile(in_):
         name_img = os.path.split(in_)[-1]
         o_img = any_to_image(in_)
         d_img = cv2.resize(o_img, size, interpolation=cv2.INTER_NEAREST)
+        print(out_)
         if os.path.isdir(out_):
             cv2.imwrite(os.path.join(out_, name_img), d_img)
         else:
             cv2.imwrite(out_, d_img)
-    else:
+    elif os.path.isdir(in_):
         path_list = os.listdir(in_)
         for i in path_list:  # r'Label_1.png'
             img_dirfile = os.path.join(in_, i)
             image_resize(img_dirfile, out_, size=size)
+    else:
+        print('!ERROR! The input path or image does not existed!')
+        return False
 
     return True
 

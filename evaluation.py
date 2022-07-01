@@ -1591,7 +1591,7 @@ def test_bat_5(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT'):
     return True
 
 
-def test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O'):
+def test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O', g=True, t=True, e=False):
     if not os.path.exists(main_path):
         print('!ERROR! The main_path path does not existed!')
         return False
@@ -1602,6 +1602,8 @@ def test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O'):
 
     gt_dir = r'GT'
     GT_dir = os.path.join(main_path, gt_dir)
+    if not os.path.exists(GT_dir):
+        os.makedirs(GT_dir)
     blur_dir = r'Input'
     BLUR_dir = os.path.join(main_path, blur_dir)
     blur_enhance_dir = r'TE'
@@ -1613,45 +1615,53 @@ def test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O'):
     cieganp_dir = r'CIEGAN_2'
     CIEGANP_dir = os.path.join(main_path, cieganp_dir)
 
-    image_resize(O_dir, GT_dir, size=(256, 256))
-    traditional_blur_folder(GT_dir, BLUR_dir)
-    traditional_enhancement_method_folder(GT_dir, GT_enhance_dir)
-    traditional_enhancement_method_folder(BLUR_dir, BLUR_enhance_dir)
-    test_folder(BLUR_dir, CIEGAN_dir, ckp_1_dir)
-    test_folder(BLUR_dir, CIEGANP_dir, ckp_2_dir)
+    if g:
+        image_resize(O_dir, GT_dir, size=(256, 256))
+        traditional_blur_folder(GT_dir, BLUR_dir)
+        traditional_enhancement_method_folder(GT_dir, GT_enhance_dir)
+        traditional_enhancement_method_folder(BLUR_dir, BLUR_enhance_dir)
 
-    # Fractal and Resolution need matlab code
-    # NR_name = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution', 'Fractal']
-    NR_name = ['STD', 'AG', 'SF', 'Entropy', 'Resolution']
-    # NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, niqe, getFractal]
-    NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, getNIQE, getResolution]
-    cols = [blur_dir, blur_enhance_dir, cieganp_dir, gt_dir, gt_enhance_dir]
-    for i in range(len(NR_name)):
-        for dir in cols:
-            evaluateNR_add_folder(main_path, dir, NR_name[i], NR_funtion[i])
+    if t:
+        test_folder(BLUR_dir, CIEGAN_dir, ckp_1_dir)
+        test_folder(BLUR_dir, CIEGANP_dir, ckp_2_dir)
 
-    FR_name = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI']
-    FR_funtion = [getMSE, getRMSE, getNRMSE, getSSIM, getMSSSIM, getPSNR, getUQI, getMI, getNMI, getAMI]
-    cols = [gt_dir, gt_dir, gt_dir, gt_enhance_dir, gt_enhance_dir]
-    cols_ref = [blur_enhance_dir, cieganp_dir, gt_enhance_dir, blur_enhance_dir, cieganp_dir]
-    for i in range(len(FR_name)):
-        for j in range(len(cols)):
-            evaluateFR_add_folder(main_path, cols[j], cols_ref[j], FR_name[i], FR_funtion[i])
+    if e:
+        # Fractal and Resolution need matlab code
+        # NR_name = ['STD', 'AG', 'SF', 'Entropy', 'NIQE', 'Resolution', 'Fractal']
+        NR_name = ['STD', 'AG', 'SF', 'Entropy', 'Resolution']
+        # NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, niqe, getFractal]
+        NR_funtion = [getSTD, getAvgGradient, getSpatialFrequency, getEntropy, getNIQE, getResolution]
+        cols = [blur_dir, blur_enhance_dir, cieganp_dir, gt_dir, gt_enhance_dir]
+        for i in range(len(NR_name)):
+            for dir in cols:
+                evaluateNR_add_folder(main_path, dir, NR_name[i], NR_funtion[i])
 
-    # make_box_plot_1(main_path)
-    make_box_plot_2(main_path)
+        FR_name = ['MSE', 'RMSE', 'NRMSE', 'SSIM', 'MS-SSIM', 'PSNR', 'UQI', 'MI', 'NMI', 'AMI']
+        FR_funtion = [getMSE, getRMSE, getNRMSE, getSSIM, getMSSSIM, getPSNR, getUQI, getMI, getNMI, getAMI]
+        cols = [gt_dir, gt_dir, gt_dir, gt_enhance_dir, gt_enhance_dir]
+        cols_ref = [blur_enhance_dir, cieganp_dir, gt_enhance_dir, blur_enhance_dir, cieganp_dir]
+        for i in range(len(FR_name)):
+            for j in range(len(cols)):
+                evaluateFR_add_folder(main_path, cols[j], cols_ref[j], FR_name[i], FR_funtion[i])
+
+        make_box_plot_1(main_path)
+        # make_box_plot_2(main_path)
 
     return True
 
 
 if __name__ == "__main__":
+    main_path = r'C:\DATA\CIEGAN_eval_ad_1'
+    ckp_1_dir = r'C:\DATA\CIEGAN\DAPI'
+    ckp_2_dir = r'C:\DATA\CIEGAN\CTNT'
+    test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O', t=True, e=False)
     # img = r'C:\DATA\CIEGAN_eval_5\GT\2018-09-13~F_CD09~T1_47.png'
     # resolution = getResolution(img, pps=0.65)
     # print(resolution)
 
     # make_box_plot_2(r'C:\DATA\CIEGAN_eval_13')
 
-    ckp_dir = r'C:\DATA\PSL_CKP\checkpoint_20220327_155150'  # CD09 Bright CB
+    # ckp_dir = r'C:\DATA\PSL_CKP\checkpoint_20220327_155150'  # CD09 Bright CB
     # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220329_094129' # CD09 Bright AB
     # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220330_233448' # CD09 CTNT AB
     # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220401_181520' # CD11 CD13 DAPI AB
@@ -1666,9 +1676,9 @@ if __name__ == "__main__":
     # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220330_233448'
     # test_bat_5(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
 
-    main_path = r'C:\DATA\CIEGAN_eval_12'
-    ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220401_181520'
-    test_bat_5(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
+    # main_path = r'C:\DATA\CIEGAN_eval_12'
+    # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220401_181520'
+    # test_bat_5(main_path, ckp_dir, ckp_plus_dir, gt_dir=r'GT')
 
     # main_path = r'C:\DATA\CIEGAN_eval_14'
     # ckp_plus_dir = r'C:\DATA\PSL_CKP\checkpoint_20220403_141422'
