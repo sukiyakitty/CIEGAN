@@ -150,7 +150,7 @@ def save_blur(in_file, out_file):
     return True
 
 
-def image_resize(in_, out_, size=_):
+def image_resize(in_, out_, size=(256,256)):
     # resize all images in in_ and output in out_
     # in_ or out_ can be a image file path or dir path
     # if out_ is a dir, it must existed
