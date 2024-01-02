@@ -1651,10 +1651,15 @@ def test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O', g=True, t=True, e=Fa
 
 
 if __name__ == "__main__":
-    main_path = r'C:\DATA\CIEGAN_eval_ad_1'
-    ckp_1_dir = r'C:\DATA\CIEGAN\DAPI'
-    ckp_2_dir = r'C:\DATA\CIEGAN\CTNT'
-    test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O', t=True, e=False)
+    input_dir=r'C:\DATA\CIEGAN_eval\app\Input'
+    output_dir=r'C:\DATA\CIEGAN_eval\app\CIEGANP'
+    checkpoint_dir=r'C:\DATA\CKP\CIEGAN\Bright'
+    test_folder(input_dir, output_dir, checkpoint_dir, img_size=256, batch_size=16)
+
+    # main_path = r'C:\DATA\CIEGAN_eval_ad_1'
+    # ckp_1_dir = r'C:\DATA\CIEGAN\DAPI'
+    # ckp_2_dir = r'C:\DATA\CIEGAN\CTNT'
+    # test_bat_6(main_path, ckp_1_dir, ckp_2_dir, o_dir=r'O', t=True, e=False)
     # img = r'C:\DATA\CIEGAN_eval_5\GT\2018-09-13~F_CD09~T1_47.png'
     # resolution = getResolution(img, pps=0.65)
     # print(resolution)
